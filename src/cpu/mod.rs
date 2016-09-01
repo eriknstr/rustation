@@ -12,6 +12,7 @@ use shared::SharedState;
 use gpu::renderer::Renderer;
 use interrupt::InterruptState;
 use debugger::Debugger;
+use tracer::{Tracer, Collector, Value};
 
 use self::cop0::{Cop0, Exception};
 use self::gte::Gte;
@@ -19,7 +20,7 @@ use self::gte::Gte;
 /// This struct contains the CPU state, including the `Interconnect`
 /// instance which owns most of the peripherals.
 #[derive(RustcDecodable, RustcEncodable)]
-pub struct Cpu {
+pub struct Cpu<T> {
     /// The program counter register: points to the next instruction
     pc: u32,
     /// Next value for the PC, used to simulate the branch delay slot
@@ -54,12 +55,13 @@ pub struct Cpu {
     /// If `true` break instructions will trigger the debugger instead
     /// of generating an exception.
     debug_on_break: bool,
+    /// CPU tracer
+    tracer: T,
 }
 
-impl Cpu {
-
+impl<T: Default> Cpu<T> {
     /// Create a new CPU instance
-    pub fn new(inter: Interconnect) -> Cpu {
+    pub fn new(inter: Interconnect) -> Cpu<T> {
         // Not sure what the reset values are...
         let mut regs = [0xdeadbeef; 32];
 
@@ -84,9 +86,12 @@ impl Cpu {
             branch:         false,
             delay_slot:     false,
             debug_on_break: false,
+            tracer:         Default::default(),
         }
     }
+}
 
+impl<T: Tracer> Cpu<T> {
     pub fn set_debug_on_break(&mut self, enabled: bool) {
         self.debug_on_break = enabled
     }
@@ -167,6 +172,23 @@ impl Cpu {
                                         shared,
                                         renderer);
             }
+
+            self.tracer.event(shared.tk().now(),
+                              "irq_pc",
+                              32,
+                              self.current_pc);
+
+            self.tracer.event(shared.tk().now(),
+                              "irq_status",
+                              16,
+                              shared.irq_state().status() as Value);
+            
+
+            self.tracer.event(shared.tk().now(),
+                              "irq_mask",
+                              16,
+                              shared.irq_state().mask() as Value);
+
             self.exception(Exception::Interrupt);
         } else {
             // No interrupt pending, run the current instruction
@@ -297,7 +319,7 @@ impl Cpu {
     }
 
     /// Handle writes when the cache is isolated
-    pub fn cache_maintenance<T: Addressable>(&mut self, addr: u32, val: u32) {
+    pub fn cache_maintenance<A: Addressable>(&mut self, addr: u32, val: u32) {
         // Implementing full cache emulation requires handling many
         // corner cases. For now I'm just going to add support for
         // cache invalidation which is the only use case for cache
@@ -309,7 +331,7 @@ impl Cpu {
             panic!("Cache maintenance while instruction cache is disabled");
         }
 
-        if T::size() != 4 || val != 0 {
+        if A::size() != 4 || val != 0 {
             panic!("Unsupported write while cache is isolated: {:08x}",
                    val);
         }
@@ -1740,6 +1762,11 @@ impl Cpu {
 
         // Not supported by this coprocessor
         self.exception(Exception::CoprocessorError);
+    }
+
+    /// Collect the trace
+    pub fn collect<C: Collector>(&mut self, c: &mut C) -> C::Error {
+        c.collect(&mut self.tracer)
     }
 }
 
