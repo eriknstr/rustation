@@ -12,7 +12,7 @@ use shared::SharedState;
 use gpu::renderer::Renderer;
 use interrupt::InterruptState;
 use debugger::Debugger;
-use tracer::{Tracer, Collector, Value};
+use tracer::{Tracer, Collector};
 
 use self::cop0::{Cop0, Exception};
 use self::gte::Gte;
@@ -132,6 +132,8 @@ impl<T: Tracer> Cpu<T> {
             shared.tk().update_sync_pending();
         }
 
+        self.trace(shared);
+
         // Save the address of the current instruction to store in
         // `EPC` in case of an exception.
         self.current_pc = self.pc;
@@ -161,7 +163,13 @@ impl<T: Tracer> Cpu<T> {
         self.branch     = false;
 
         // Check for pending interrupts
-        if self.cop0.irq_active(*shared.irq_state()) {
+        let enter_irq = self.cop0.irq_active(*shared.irq_state());
+
+        self.tracer.event(shared.tk().now(),
+                          "enter_irq",
+                          enter_irq);
+
+        if enter_irq {
             shared.counters_mut().cpu_interrupt.increment();
 
             if instruction.is_gte_op() {
@@ -173,27 +181,30 @@ impl<T: Tracer> Cpu<T> {
                                         renderer);
             }
 
-            self.tracer.event(shared.tk().now(),
-                              "irq_pc",
-                              32,
-                              self.current_pc);
-
-            self.tracer.event(shared.tk().now(),
-                              "irq_status",
-                              16,
-                              shared.irq_state().status() as Value);
-            
-
-            self.tracer.event(shared.tk().now(),
-                              "irq_mask",
-                              16,
-                              shared.irq_state().mask() as Value);
-
             self.exception(Exception::Interrupt);
         } else {
             // No interrupt pending, run the current instruction
             self.decode_and_execute(debugger, instruction, shared, renderer);
         }
+    }
+
+    /// When tracing is enabled we log a bunch of variables before
+    /// every instruction
+    fn trace(&mut self, shared: &mut SharedState) {
+        let now = shared.tk().now();
+
+        self.tracer.event(now,
+                          "irq_status",
+                          shared.irq_state().status());
+        self.tracer.event(now,
+                          "irq_mask",
+                          shared.irq_state().mask());
+
+        let irq = self.cop0.irq_active(*shared.irq_state());
+
+        self.tracer.event(now,
+                          "enter_irq",
+                          irq);
     }
 
     /// Force the value of the PC

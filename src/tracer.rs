@@ -2,19 +2,20 @@
 //! traces
 
 /// Underlying type of every logged value. Since we use a `u32` we
-/// only support variables up to 32bits for now.
-pub type Value = u32;
+/// only support variables up to 32bits for now. The 2nd parameter is
+/// the size of the value in bits.
+#[derive(Copy, Clone)]
+pub struct Value(pub u32, pub u8);
 
 pub trait Tracer {
     /// Called when a value change should be logged. A given
-    /// `variable` should always have the same `size` in subsequent
-    /// calls to `event`, otherwise the function is allowed to
-    /// `panic!`.
-    fn event(&mut self,
-             date: u64,
-             variable: &str,
-             size: u8,
-             value: Value);
+    /// `variable` should always have the same Value size in
+    /// subsequent calls to `event`, otherwise the function is allowed
+    /// to `panic!`.
+    fn event<V: Into<Value>>(&mut self,
+                             date: u64,
+                             variable: &str,
+                             value: V);
 
     /// Return the list of variables handled by this tracer
     fn variables(&self) -> &[Variable];
@@ -28,11 +29,10 @@ pub trait Tracer {
 
 /// Dummy implementation when we want to inhibit the tracing
 impl Tracer for () {
-    fn event(&mut self,
-             _date: u64,
-             _variable: &str,
-             _size: u8,
-             _value: Value) {
+    fn event<V: Into<Value>>(&mut self,
+                             _date: u64,
+                             _variable: &str,
+                             _value: V) {
     }
 
     fn variables(&self) -> &[Variable] {
@@ -49,7 +49,7 @@ impl Tracer for () {
 
 /// Struct recording a single event: (date, id, value). `id` is the
 /// index in the array returned by the `Tracer` `variables` method.
-pub struct Event(pub u64, pub u32, pub Value);
+pub struct Event(pub u64, pub u32, pub u32);
 
 #[derive(Clone)]
 pub struct Variable {
@@ -88,4 +88,16 @@ pub trait Collector {
     /// happen in `f`
     fn submodule<F>(&mut self, name: &str, f: F) -> Self::Error
         where F: FnOnce(&mut Self) -> Self::Error;
+}
+
+impl From<bool> for Value {
+    fn from(v: bool) -> Value {
+        Value(v as u32, 1)
+    }
+}
+
+impl From<u16> for Value {
+    fn from(v: u16) -> Value {
+        Value(v as u32, 16)
+    }
 }
