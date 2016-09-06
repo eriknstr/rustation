@@ -1,6 +1,8 @@
 use shared::SharedState;
 use interrupt::Interrupt;
 
+use tracer::Value;
+
 /// Direct Memory Access
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct Dma {
@@ -91,7 +93,7 @@ impl Dma {
 
         if !prev_irq && self.irq() {
             // Rising edge of the done interrupt
-            shared.irq_state().assert(Interrupt::Dma);
+            shared.irq_state_mut().assert(Interrupt::Dma);
         }
     }
 
@@ -120,7 +122,7 @@ impl Dma {
 
         if !prev_irq && self.irq() {
             // Rising edge of the done interrupt
-            shared.irq_state().assert(Interrupt::Dma);
+            shared.irq_state_mut().assert(Interrupt::Dma);
         }
     }
 }
@@ -323,6 +325,12 @@ pub enum Sync {
     LinkedList = 2,
 }
 
+impl From<Sync> for Value {
+    fn from(v: Sync) -> Value {
+        Value(v as u32, 2)
+    }
+}
+
 /// The 7 DMA ports
 #[derive(Clone, Copy, PartialEq, Eq, Debug, RustcDecodable, RustcEncodable)]
 pub enum Port {
@@ -354,5 +362,11 @@ impl Port {
             6 => Port::Otc,
             n => panic!("Invalid port {}", n),
         }
+    }
+}
+
+impl From<Port> for Value {
+    fn from(v: Port) -> Value {
+        Value(v as u32, 3)
     }
 }

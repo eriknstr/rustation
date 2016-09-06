@@ -39,7 +39,7 @@ pub struct Cpu<T> {
     /// Instruction Cache (256 4-word cachelines)
     icache: ICacheLines,
     /// Memory interface
-    inter: Interconnect,
+    inter: Interconnect<T>,
     /// Coprocessor 0: System control
     cop0: Cop0,
     /// Coprocessor 2: Geometry Transform Engine
@@ -61,7 +61,7 @@ pub struct Cpu<T> {
 
 impl<T: Default> Cpu<T> {
     /// Create a new CPU instance
-    pub fn new(inter: Interconnect) -> Cpu<T> {
+    pub fn new(inter: Interconnect<T>) -> Cpu<T> {
         // Not sure what the reset values are...
         let mut regs = [0xdeadbeef; 32];
 
@@ -97,12 +97,12 @@ impl<T: Tracer> Cpu<T> {
     }
 
     /// Return a reference to the interconnect
-    pub fn interconnect(&self) -> &Interconnect {
+    pub fn interconnect(&self) -> &Interconnect<T> {
         &self.inter
     }
 
     /// Return a mutable reference to the interconnect
-    pub fn interconnect_mut(&mut self) -> &mut Interconnect {
+    pub fn interconnect_mut(&mut self) -> &mut Interconnect<T> {
         &mut self.inter
     }
 
@@ -131,8 +131,6 @@ impl<T: Tracer> Cpu<T> {
             self.inter.sync(shared);
             shared.tk().update_sync_pending();
         }
-
-        self.trace(shared);
 
         // Save the address of the current instruction to store in
         // `EPC` in case of an exception.
@@ -163,13 +161,11 @@ impl<T: Tracer> Cpu<T> {
         self.branch     = false;
 
         // Check for pending interrupts
-        let enter_irq = self.cop0.irq_active(*shared.irq_state());
+        let trigger_irq = self.cop0.irq_active(*shared.irq_state());
 
-        self.tracer.event(shared.tk().now(),
-                          "enter_irq",
-                          enter_irq);
+        iftrace!(self.trace(shared, trigger_irq));
 
-        if enter_irq {
+        if trigger_irq {
             shared.counters_mut().cpu_interrupt.increment();
 
             if instruction.is_gte_op() {
@@ -190,7 +186,7 @@ impl<T: Tracer> Cpu<T> {
 
     /// When tracing is enabled we log a bunch of variables before
     /// every instruction
-    fn trace(&mut self, shared: &mut SharedState) {
+    fn trace(&mut self, shared: &mut SharedState, trigger_irq: bool) {
         let now = shared.tk().now();
 
         self.tracer.event(now,
@@ -200,11 +196,7 @@ impl<T: Tracer> Cpu<T> {
                           "irq_mask",
                           shared.irq_state().mask());
 
-        let irq = self.cop0.irq_active(*shared.irq_state());
-
-        self.tracer.event(now,
-                          "enter_irq",
-                          irq);
+        self.tracer.event(now, "trigger_irq", trigger_irq);
     }
 
     /// Force the value of the PC
@@ -1777,7 +1769,9 @@ impl<T: Tracer> Cpu<T> {
 
     /// Collect the trace
     pub fn collect<C: Collector>(&mut self, c: &mut C) -> C::Error {
-        c.collect(&mut self.tracer)
+        c.collect(&mut self.tracer);
+
+        c.submodule("Interconnect", |c| self.inter.collect(c))
     }
 }
 

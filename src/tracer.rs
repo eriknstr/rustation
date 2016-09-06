@@ -101,3 +101,20 @@ impl From<u16> for Value {
         Value(v as u32, 16)
     }
 }
+
+impl From<u32> for Value {
+    fn from(v: u32) -> Value {
+        Value(v, 32)
+    }
+}
+
+/// Execute $what only if tracing is enabled. Used to make sure
+/// expensive computations are optimized away when tracing is
+/// disabled.
+#[macro_export]
+macro_rules! iftrace {
+    ($what:expr) => (
+        if cfg!(feature = "trace") {
+            $what
+        });
+}

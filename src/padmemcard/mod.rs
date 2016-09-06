@@ -175,7 +175,7 @@ impl PadMemCard {
                         if self.dsr_it {
                             if !self.interrupt {
                                 // Rising edge of the interrupt
-                                let irq_state = shared.irq_state();
+                                let irq_state = shared.irq_state_mut();
 
                                 irq_state.assert(Interrupt::PadMemCard);
                             }
@@ -333,7 +333,7 @@ impl PadMemCard {
                     warn!("Gamepad interrupt acknowledge while DSR is active");
 
                     self.interrupt = true;
-                    shared.irq_state().assert(Interrupt::PadMemCard);
+                    shared.irq_state_mut().assert(Interrupt::PadMemCard);
                 }
             }
 

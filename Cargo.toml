@@ -13,6 +13,9 @@ readme = "README.md"
 license = "GPL-2.0+"
 keywords = ["emulator", "playstation"]
 
+[features]
+trace = []
+
 [dependencies]
 
 shaman = "0.1.0"

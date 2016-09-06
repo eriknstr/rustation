@@ -9,6 +9,8 @@ extern crate rustc_serialize;
 mod box_array;
 #[macro_use]
 mod serializer;
+#[macro_use]
+pub mod tracer;
 
 pub mod gpu;
 pub mod cdrom;
@@ -21,7 +23,6 @@ pub mod debugger;
 pub mod assembler;
 pub mod parallel_io;
 pub mod debug_uart;
-pub mod tracer;
 
 mod interrupt;
 mod timekeeper;
