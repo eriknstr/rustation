@@ -1,7 +1,7 @@
 use shared::SharedState;
 use interrupt::Interrupt;
 
-use tracer::Value;
+use tracer::SizedValue;
 
 /// Direct Memory Access
 #[derive(RustcDecodable, RustcEncodable)]
@@ -325,9 +325,9 @@ pub enum Sync {
     LinkedList = 2,
 }
 
-impl From<Sync> for Value {
-    fn from(v: Sync) -> Value {
-        Value(v as u32, 2)
+impl From<Sync> for SizedValue {
+    fn from(v: Sync) -> SizedValue {
+        SizedValue(v as u32, 2)
     }
 }
 
@@ -365,8 +365,8 @@ impl Port {
     }
 }
 
-impl From<Port> for Value {
-    fn from(v: Port) -> Value {
-        Value(v as u32, 3)
+impl From<Port> for SizedValue {
+    fn from(v: Port) -> SizedValue {
+        SizedValue(v as u32, 3)
     }
 }

@@ -44,12 +44,12 @@ impl MDec {
         }
     }
 
-    pub fn load<T: Addressable>(&mut self,
+    pub fn load<A: Addressable>(&mut self,
                                  _: &mut SharedState,
                                  offset: u32) -> u32 {
 
-        if T::size() != 4 {
-            panic!("Unhandled MDEC load ({})", T::size());
+        if A::size() != 4 {
+            panic!("Unhandled MDEC load ({})", A::size());
         }
 
         match offset {
@@ -59,13 +59,13 @@ impl MDec {
     }
 
 
-    pub fn store<T: Addressable>(&mut self,
+    pub fn store<A: Addressable>(&mut self,
                                  _: &mut SharedState,
                                  offset: u32,
                                  val: u32) {
 
-        if T::size() != 4 {
-            panic!("Unhandled MDEC store ({})", T::size());
+        if A::size() != 4 {
+            panic!("Unhandled MDEC store ({})", A::size());
         }
 
         match offset {
@@ -209,7 +209,7 @@ impl MDec {
     }
 }
 
-callback!(struct CommandHandler(fn (&mut MDec, u32)) {
+callback!(struct CommandHandler (fn(&mut MDec, u32)) {
     MDec::handle_command,
     MDec::handle_color_quant_matrices,
     MDec::handle_monochrome_quant_matrix,

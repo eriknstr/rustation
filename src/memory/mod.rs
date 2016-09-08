@@ -18,11 +18,11 @@ use padmemcard::PadMemCard;
 use mdec::MDec;
 use parallel_io::ParallelIo;
 use debug_uart::DebugUart;
-use tracer::{Tracer, Collector};
+use tracer::module_tracer;
 
 /// Global interconnect
 #[derive(RustcDecodable, RustcEncodable)]
-pub struct Interconnect<T> {
+pub struct Interconnect {
     /// Basic Input/Output memory
     bios: Bios,
     /// Main RAM
@@ -54,14 +54,12 @@ pub struct Interconnect<T> {
     parallel_io: ParallelIo,
     /// Debug UART
     debug_uart: DebugUart,
-    /// DMA tracer
-    dma_tracer: T,
 }
 
-impl<T: Default> Interconnect<T> {
+impl Interconnect {
     pub fn new(bios: Bios,
                gpu: Gpu,
-               disc: Option<Disc>) -> Interconnect<T> {
+               disc: Option<Disc>) -> Interconnect {
         Interconnect {
             bios: bios,
             ram: Ram::new(),
@@ -78,12 +76,8 @@ impl<T: Default> Interconnect<T> {
             mem_control: [0; 9],
             parallel_io: ParallelIo::disconnected(),
             debug_uart: DebugUart::new(),
-            dma_tracer: Default::default(),
         }
     }
-}
-
-impl<T: Tracer> Interconnect<T> {
 
     pub fn sync(&mut self, shared: &mut SharedState) {
         if shared.tk().needs_sync(Peripheral::Gpu) {
@@ -506,22 +500,22 @@ impl<T: Tracer> Interconnect<T> {
 
         let sync = self.dma.channel(port).sync(); 
 
-        iftrace!({
+        module_tracer("DMA", |m| {
             let now = shared.tk().now();
             let channel = self.dma.channel_mut(port);
 
-            self.dma_tracer.event(now, "sync", sync);
-            self.dma_tracer.event(now, "port", port);
-            self.dma_tracer.event(now, "base", channel.base());
-            self.dma_tracer.event(now, "to_ram",
-                                  channel.direction() == Direction::ToRam);
+            m.trace(now, "sync", sync);
+            m.trace(now, "port", port);
+            m.trace(now, "base", channel.base());
+            m.trace(now, "to_ram",
+                    channel.direction() == Direction::ToRam);
 
             let size =
                 match channel.transfer_size() {
                     Some(v) => v,
                     None => 0xffffffff,
                 };
-            self.dma_tracer.event(now, "size", size);
+            m.trace(now, "size", size);
         });
 
         match sync {
@@ -647,11 +641,6 @@ impl<T: Tracer> Interconnect<T> {
             addr = addr.wrapping_add(increment);
             remsz -= 1;
         }
-    }
-
-    /// Collect the trace
-    pub fn collect<C: Collector>(&mut self, c: &mut C) -> C::Error {
-        c.submodule("DMA", |c| c.collect(&mut self.dma_tracer))
     }
 }
 

@@ -12,7 +12,7 @@ use shared::SharedState;
 use gpu::renderer::Renderer;
 use interrupt::InterruptState;
 use debugger::Debugger;
-use tracer::{Tracer, Collector};
+use tracer::module_tracer;
 
 use self::cop0::{Cop0, Exception};
 use self::gte::Gte;
@@ -20,7 +20,7 @@ use self::gte::Gte;
 /// This struct contains the CPU state, including the `Interconnect`
 /// instance which owns most of the peripherals.
 #[derive(RustcDecodable, RustcEncodable)]
-pub struct Cpu<T> {
+pub struct Cpu {
     /// The program counter register: points to the next instruction
     pc: u32,
     /// Next value for the PC, used to simulate the branch delay slot
@@ -39,7 +39,7 @@ pub struct Cpu<T> {
     /// Instruction Cache (256 4-word cachelines)
     icache: ICacheLines,
     /// Memory interface
-    inter: Interconnect<T>,
+    inter: Interconnect,
     /// Coprocessor 0: System control
     cop0: Cop0,
     /// Coprocessor 2: Geometry Transform Engine
@@ -55,13 +55,11 @@ pub struct Cpu<T> {
     /// If `true` break instructions will trigger the debugger instead
     /// of generating an exception.
     debug_on_break: bool,
-    /// CPU tracer
-    tracer: T,
 }
 
-impl<T: Default> Cpu<T> {
+impl Cpu {
     /// Create a new CPU instance
-    pub fn new(inter: Interconnect<T>) -> Cpu<T> {
+    pub fn new(inter: Interconnect) -> Cpu {
         // Not sure what the reset values are...
         let mut regs = [0xdeadbeef; 32];
 
@@ -86,23 +84,20 @@ impl<T: Default> Cpu<T> {
             branch:         false,
             delay_slot:     false,
             debug_on_break: false,
-            tracer:         Default::default(),
         }
     }
-}
 
-impl<T: Tracer> Cpu<T> {
     pub fn set_debug_on_break(&mut self, enabled: bool) {
         self.debug_on_break = enabled
     }
 
     /// Return a reference to the interconnect
-    pub fn interconnect(&self) -> &Interconnect<T> {
+    pub fn interconnect(&self) -> &Interconnect {
         &self.inter
     }
 
     /// Return a mutable reference to the interconnect
-    pub fn interconnect_mut(&mut self) -> &mut Interconnect<T> {
+    pub fn interconnect_mut(&mut self) -> &mut Interconnect {
         &mut self.inter
     }
 
@@ -163,7 +158,18 @@ impl<T: Tracer> Cpu<T> {
         // Check for pending interrupts
         let trigger_irq = self.cop0.irq_active(*shared.irq_state());
 
-        iftrace!(self.trace(shared, trigger_irq));
+        module_tracer("CPU", |m| {
+            let now = shared.tk().now();
+
+            m.trace(now,
+                    "irq_status",
+                    shared.irq_state().status());
+            m.trace(now,
+                    "irq_mask",
+                    shared.irq_state().mask());
+
+            m.trace(now, "trigger_irq", trigger_irq);
+        });
 
         if trigger_irq {
             shared.counters_mut().cpu_interrupt.increment();
@@ -182,21 +188,6 @@ impl<T: Tracer> Cpu<T> {
             // No interrupt pending, run the current instruction
             self.decode_and_execute(debugger, instruction, shared, renderer);
         }
-    }
-
-    /// When tracing is enabled we log a bunch of variables before
-    /// every instruction
-    fn trace(&mut self, shared: &mut SharedState, trigger_irq: bool) {
-        let now = shared.tk().now();
-
-        self.tracer.event(now,
-                          "irq_status",
-                          shared.irq_state().status());
-        self.tracer.event(now,
-                          "irq_mask",
-                          shared.irq_state().mask());
-
-        self.tracer.event(now, "trigger_irq", trigger_irq);
     }
 
     /// Force the value of the PC
@@ -1765,13 +1756,6 @@ impl<T: Tracer> Cpu<T> {
 
         // Not supported by this coprocessor
         self.exception(Exception::CoprocessorError);
-    }
-
-    /// Collect the trace
-    pub fn collect<C: Collector>(&mut self, c: &mut C) -> C::Error {
-        c.collect(&mut self.tracer);
-
-        c.submodule("Interconnect", |c| self.inter.collect(c))
     }
 }
 

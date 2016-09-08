@@ -5,6 +5,10 @@ extern crate cdimage;
 extern crate arrayvec;
 extern crate rustc_serialize;
 
+#[cfg(feature = "trace")]
+#[macro_use]
+extern crate lazy_static;
+
 #[macro_use]
 mod box_array;
 #[macro_use]

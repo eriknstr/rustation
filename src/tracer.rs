@@ -1,120 +1,133 @@
 //! Interface used to log internal variables in order to generate
 //! traces
 
+use std::collections::HashMap;
+
+pub type ValueType  = u32;
+pub type ValueSize  = u8;
+
 /// Underlying type of every logged value. Since we use a `u32` we
 /// only support variables up to 32bits for now. The 2nd parameter is
 /// the size of the value in bits.
 #[derive(Copy, Clone)]
-pub struct Value(pub u32, pub u8);
+pub struct SizedValue(pub ValueType, pub ValueSize);
 
-pub trait Tracer {
-    /// Called when a value change should be logged. A given
-    /// `variable` should always have the same Value size in
-    /// subsequent calls to `event`, otherwise the function is allowed
-    /// to `panic!`.
-    fn event<V: Into<Value>>(&mut self,
-                             date: u64,
-                             variable: &str,
-                             value: V);
-
-    /// Return the list of variables handled by this tracer
-    fn variables(&self) -> &[Variable];
-
-    /// Return the full log of events
-    fn log(&self) -> &[Event];
-
-    /// Clear the log
-    fn clear(&mut self);
-}
-
-/// Dummy implementation when we want to inhibit the tracing
-impl Tracer for () {
-    fn event<V: Into<Value>>(&mut self,
-                             _date: u64,
-                             _variable: &str,
-                             _value: V) {
-    }
-
-    fn variables(&self) -> &[Variable] {
-        &[]
-    }
-
-    fn log(&self) -> &[Event] {
-        &[]
-    }
-
-    fn clear(&mut self) {
+impl From<bool> for SizedValue {
+    fn from(v: bool) -> SizedValue {
+        SizedValue(v as ValueType, 1)
     }
 }
 
-/// Struct recording a single event: (date, id, value). `id` is the
-/// index in the array returned by the `Tracer` `variables` method.
-pub struct Event(pub u64, pub u32, pub u32);
+impl From<u16> for SizedValue {
+    fn from(v: u16) -> SizedValue {
+        SizedValue(v as ValueType, 16)
+    }
+}
 
-#[derive(Clone)]
-pub struct Variable {
-    /// Name of the variable
-    name: String,
-    /// Size of the variable in bits.
-    size: u8,
+impl From<u32> for SizedValue {
+    fn from(v: u32) -> SizedValue {
+        SizedValue(v as ValueType, 32)
+    }
+}
+
+struct Variable {
+    size: ValueSize,
+    /// Log for this variable: `(date, value)`
+    log: Vec<(u64, ValueType)>,
 }
 
 impl Variable {
-    pub fn new(name: String, size: u8) -> Variable {
+    fn new(size: ValueSize) -> Variable {
         Variable {
-            name: name,
             size: size,
+            log: Vec::new(),
+        }
+    }
+}
+
+pub struct Module {
+    /// Variables, indexed by name.
+    variables: HashMap<&'static str, Variable>,
+}
+
+impl Module {
+    #[cfg(feature = "trace")]
+    fn new() -> Module {
+        Module {
+            variables: HashMap::new(),
         }
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
-    }
+    pub fn trace<V: Into<SizedValue>>(&mut self,
+                                      date: u64,
+                                      name: &'static str,
+                                      sized_value: V) {
+        let SizedValue(value, size) = sized_value.into();
 
-    pub fn size(&self) -> u8 {
-        self.size
-    }
-}
+        let var = self.variables.entry(name).or_insert(Variable::new(size));
 
-/// Trait implemented by visitors that are supposed to collect and
-/// aggregate the various logs
-pub trait Collector {
-    type Error;
+        if var.size != size {
+            panic!("Incoherent size for variable {}: got {} and {}",
+                   name, var.size, size);
+        }
 
-    /// Collect `tracer`'s log and clear it.
-    fn collect<T: Tracer>(&mut self, tracer: &mut T) -> Self::Error;
+        if let Some(&(last_date, last_value)) = var.log.last() {
+            if last_date >= date {
+                panic!("Got out-of-order events for {} ({} >= {})",
+                       name, last_date, date);
+            }
 
-    /// Used to dump a submodule, the submodule collection should
-    /// happen in `f`
-    fn submodule<F>(&mut self, name: &str, f: F) -> Self::Error
-        where F: FnOnce(&mut Self) -> Self::Error;
-}
+            if last_value == value {
+                // No value change
+                return;
+            }
+        }
 
-impl From<bool> for Value {
-    fn from(v: bool) -> Value {
-        Value(v as u32, 1)
-    }
-}
-
-impl From<u16> for Value {
-    fn from(v: u16) -> Value {
-        Value(v as u32, 16)
+        var.log.push((date, value));
     }
 }
 
-impl From<u32> for Value {
-    fn from(v: u32) -> Value {
-        Value(v, 32)
+#[cfg(feature = "trace")]
+pub struct Tracer {
+    /// Modules, indexed by name
+    modules: HashMap<&'static str, Module>,
+}
+
+#[cfg(feature = "trace")]
+impl Tracer {
+    fn new() -> Tracer {
+        Tracer {
+            modules: HashMap::new(),
+        }
+    }
+
+    fn module_mut(&mut self, name: &'static str) -> &mut Module {
+        self.modules.entry(name).or_insert(Module::new())
     }
 }
 
-/// Execute $what only if tracing is enabled. Used to make sure
-/// expensive computations are optimized away when tracing is
-/// disabled.
-#[macro_export]
-macro_rules! iftrace {
-    ($what:expr) => (
-        if cfg!(feature = "trace") {
-            $what
-        });
+/// Global logger instance
+#[cfg(feature = "trace")]
+lazy_static! {
+    static ref LOGGER: ::std::sync::Mutex<Tracer> = {
+        ::std::sync::Mutex::new(Tracer::new())
+    };
+}
+
+#[cfg(feature = "trace")]
+pub fn module_tracer<F>(name: &'static str, f: F)
+    where F: FnOnce(&mut Module) {
+
+    let mut logger = LOGGER.lock().unwrap();
+
+    let module = logger.module_mut(name);
+
+    f(module);
+}
+
+#[cfg(not(feature = "trace"))]
+#[inline(always)]
+pub fn module_tracer<F>(_name: &'static str, _f: F)
+    where F: FnOnce(&mut Module) {
+    // NOP
 }
