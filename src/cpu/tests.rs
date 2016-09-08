@@ -50,7 +50,7 @@ impl Renderer for DummyRenderer {
     }
 }
 
-fn write_blob(cpu: &mut Cpu<()>,
+fn write_blob(cpu: &mut Cpu,
              address: u32,
              blob: &[u32]) {
     let ram = cpu.interconnect_mut().ram_mut();
@@ -60,7 +60,7 @@ fn write_blob(cpu: &mut Cpu<()>,
     }
 }
 
-fn write<T: Addressable>(cpu: &mut Cpu<()>,
+fn write<T: Addressable>(cpu: &mut Cpu,
                          address: u32,
                          v: u32) {
     let ram = cpu.interconnect_mut().ram_mut();
@@ -68,7 +68,7 @@ fn write<T: Addressable>(cpu: &mut Cpu<()>,
     ram.store::<T>(address, v);
 }
 
-fn read<T: Addressable>(cpu: &mut Cpu<()>, address: u32) -> u32 {
+fn read<T: Addressable>(cpu: &mut Cpu, address: u32) -> u32 {
 
     let ram = cpu.interconnect().ram();
 
