@@ -30,7 +30,7 @@ impl From<u32> for SizedValue {
     }
 }
 
-struct Variable {
+pub struct Variable {
     size: ValueSize,
     /// Log for this variable: `(date, value)`
     log: Vec<(u64, ValueType)>,
@@ -42,6 +42,14 @@ impl Variable {
             size: size,
             log: Vec::new(),
         }
+    }
+
+    pub fn size(&self) -> ValueSize {
+        self.size
+    }
+
+    pub fn log(&self) -> &Vec<(u64, ValueType)> {
+        &self.log
     }
 }
 
@@ -56,6 +64,10 @@ impl Module {
         Module {
             variables: HashMap::new(),
         }
+    }
+
+    pub fn variables(&self) -> &HashMap<&'static str, Variable> {
+        &self.variables
     }
 
     pub fn trace<V: Into<SizedValue>>(&mut self,
@@ -104,6 +116,15 @@ impl Tracer {
     fn module_mut(&mut self, name: &'static str) -> &mut Module {
         self.modules.entry(name).or_insert(Module::new())
     }
+
+    /// Reset the tracer and return the content of the previous trace
+    fn remove_trace(&mut self) -> HashMap<&'static str, Module> {
+        let mut swap = HashMap::new();
+
+        ::std::mem::swap(&mut self.modules, &mut swap);
+
+        swap
+    }
 }
 
 /// Global logger instance
@@ -112,6 +133,18 @@ lazy_static! {
     static ref LOGGER: ::std::sync::Mutex<Tracer> = {
         ::std::sync::Mutex::new(Tracer::new())
     };
+}
+
+#[cfg(feature = "trace")]
+pub fn remove_trace() -> HashMap<&'static str, Module> {
+    let mut logger = LOGGER.lock().unwrap();
+
+    logger.remove_trace()
+}
+
+#[cfg(not(feature = "trace"))]
+pub fn remove_trace() -> HashMap<&'static str, Module> {
+    HashMap::new()
 }
 
 #[cfg(feature = "trace")]

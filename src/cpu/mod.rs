@@ -183,6 +183,10 @@ impl Cpu {
                                         renderer);
             }
 
+            // XXX No idea how long the interrupt switch takes on the
+            // real hardware?
+            shared.tk().tick(1);
+
             self.exception(Exception::Interrupt);
         } else {
             // No interrupt pending, run the current instruction
